@@ -1,16 +1,15 @@
 package main
 
 import (
-	//"compress/gzip"
-	//"io"
-	"log"
-	//"os"
+	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kms"
-	//"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
 //next is the key arn
@@ -51,7 +50,7 @@ func KMS_Decrypt(regionString string, inCiphertextBlob []byte) (plaintext []byte
 	return resp.Plaintext, nil
 }
 
-/// The output data here contains metadata required for decryption
+/// The outputata here contains metadata required for decryption
 func KMS_Encrypt(regionString string, plaintext []byte) (output []byte, err error) {
 	svc := kms.New(session.New(&aws.Config{Region: aws.String(regionString)}))
 
@@ -79,20 +78,61 @@ func KMS_Encrypt(regionString string, plaintext []byte) (output []byte, err erro
 }
 
 func main() {
+	var infilename = flag.String("infilename", "in.txt", "Input filename")
+	var outfilename = flag.String("outfilename", "out.txt", "Output filename")
+	var decrypt = flag.Bool("d", false, "Decrypt (defaults to encrypt)")
+	flag.BoolVar(&debug, "-D", false, "Enable Debug output")
+	flag.Parse()
+	//infilename := "foo.txt"
+	f, err := os.Open(*infilename)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	inText, err := ioutil.ReadAll(f)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	regionString, err := getRegionString()
 	if err != nil {
 		log.Fatal("Cannot get Region string")
 	}
 	// now wat... encrypt?
 	//svc := kms.New(sess)
-	cipherBlob, err := KMS_Encrypt(regionString, []byte("Somedata here"))
-	if err != nil {
-		fmt.Println(err.Error())
-		log.Fatal("Cannot encrypt Data")
+	if debug {
+		fmt.Println(inText)
 	}
-	plaintext, err := KMS_Decrypt(regionString, cipherBlob)
-	if err != nil {
-		log.Fatal("Cannot decrypt Data")
+	var outText []byte
+	if !*decrypt {
+		if debug {
+			fmt.Printf("Doing encryption\n")
+		}
+		cipherBlob, err := KMS_Encrypt(regionString, inText)
+		if err != nil {
+			fmt.Println(err.Error())
+			log.Fatal("Cannot encrypt Data")
+		}
+		outText = cipherBlob
+	} else {
+		if debug {
+			fmt.Printf("Doing decryption\n")
+		}
+		plaintext, err := KMS_Decrypt(regionString, inText)
+		if err != nil {
+			fmt.Println(err.Error())
+			log.Fatal("Cannot decrypt Data")
+		}
+
+		outText = plaintext
 	}
-	fmt.Println(plaintext)
+	if debug {
+		fmt.Println(outText)
+	}
+	//outfilename := "out.txt"
+	err = ioutil.WriteFile(*outfilename, outText, 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
