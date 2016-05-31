@@ -12,10 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/kms"
 )
 
-//next is the key arn
-const key_arn = "arn:aws:kms:us-east-1:686559647175:key/ade6e070-2366-475d-ba2f-8a4ec9a96a9e"
-
-var debug = true
+var debug = false
 
 // Need to modify this to use the metadata service? is kms regin independent? what about roles?
 func getRegionString() (string, error) {
@@ -51,11 +48,11 @@ func KMS_Decrypt(regionString string, inCiphertextBlob []byte) (plaintext []byte
 }
 
 /// The outputata here contains metadata required for decryption
-func KMS_Encrypt(regionString string, plaintext []byte) (output []byte, err error) {
+func KMS_Encrypt(regionString string, keyId string, plaintext []byte) (output []byte, err error) {
 	svc := kms.New(session.New(&aws.Config{Region: aws.String(regionString)}))
 
 	params := &kms.EncryptInput{
-		KeyId:     aws.String(key_arn),
+		KeyId:     aws.String(keyId),
 		Plaintext: plaintext,
 		EncryptionContext: map[string]*string{
 			"Key": aws.String("EncryptionContextValue"), // Required
@@ -81,7 +78,8 @@ func main() {
 	var infilename = flag.String("infilename", "in.txt", "Input filename")
 	var outfilename = flag.String("outfilename", "out.txt", "Output filename")
 	var decrypt = flag.Bool("d", false, "Decrypt (defaults to encrypt)")
-	flag.BoolVar(&debug, "-D", false, "Enable Debug output")
+	var keyId = flag.String("keyid", "alias/testkey1", "Key to use in the form of a full arn(arnd:aws....) or alias(alias/testkey1)")
+	flag.BoolVar(&debug, "D", false, "Enable Debug output")
 	flag.Parse()
 	//infilename := "foo.txt"
 	f, err := os.Open(*infilename)
@@ -109,7 +107,7 @@ func main() {
 		if debug {
 			fmt.Printf("Doing encryption\n")
 		}
-		cipherBlob, err := KMS_Encrypt(regionString, inText)
+		cipherBlob, err := KMS_Encrypt(regionString, *keyId, inText)
 		if err != nil {
 			fmt.Println(err.Error())
 			log.Fatal("Cannot encrypt Data")
