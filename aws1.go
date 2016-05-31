@@ -16,12 +16,14 @@ import (
 //next is the key arn
 const key_arn = "arn:aws:kms:us-east-1:686559647175:key/ade6e070-2366-475d-ba2f-8a4ec9a96a9e"
 
+var debug = true
+
 // Need to modify this to use the metadata service? is kms regin independent? what about roles?
 func getRegionString() (string, error) {
 	return "us-east-1", nil
 }
 
-func ExampleKMS_Decrypt(regionString string, inCiphertextBlob []byte) {
+func KMS_Decrypt(regionString string, inCiphertextBlob []byte) (plaintext []byte, err error) {
 	svc := kms.New(session.New(&aws.Config{Region: aws.String(regionString)}))
 
 	params := &kms.DecryptInput{
@@ -39,45 +41,41 @@ func ExampleKMS_Decrypt(regionString string, inCiphertextBlob []byte) {
 	resp, err := svc.Decrypt(params)
 
 	if err != nil {
-		// Print the error, cast err to awserr.Error to get the Code and
-		// Message from an error.
-		fmt.Println(err.Error())
-		return
+		return nil, err
 	}
 
 	// Pretty-print the response data.
-	fmt.Println(resp)
+	if debug {
+		fmt.Println(resp)
+	}
+	return resp.Plaintext, nil
 }
 
-func ExampleKMS_Encrypt(regionString string) []byte {
+/// The output data here contains metadata required for decryption
+func KMS_Encrypt(regionString string, plaintext []byte) (output []byte, err error) {
 	svc := kms.New(session.New(&aws.Config{Region: aws.String(regionString)}))
 
 	params := &kms.EncryptInput{
-		//KeyId:     aws.String("KeyIdType"), // Required
 		KeyId:     aws.String(key_arn),
-		Plaintext: []byte("PAYLOAD"), // Required
+		Plaintext: plaintext,
 		EncryptionContext: map[string]*string{
 			"Key": aws.String("EncryptionContextValue"), // Required
-			// More values...
 		},
 		GrantTokens: []*string{
 			aws.String("GrantTokenType"), // Required
-			// More values...
 		},
 	}
 	resp, err := svc.Encrypt(params)
 
 	if err != nil {
-		// Print the error, cast err to awserr.Error to get the Code and
-		// Message from an error.
-		fmt.Println(err.Error())
-		return nil
+		return nil, err
 	}
 
 	// Pretty-print the response data.
-	fmt.Println(resp)
-	//fmt.Println(params)
-	return resp.CiphertextBlob
+	if debug {
+		fmt.Println(resp)
+	}
+	return resp.CiphertextBlob, nil
 }
 
 func main() {
@@ -85,10 +83,16 @@ func main() {
 	if err != nil {
 		log.Fatal("Cannot get Region string")
 	}
-	sess := session.New(&aws.Config{Region: aws.String(regionString)})
-	fmt.Printf("+%v", sess)
 	// now wat... encrypt?
 	//svc := kms.New(sess)
-	cipherBlob := ExampleKMS_Encrypt(regionString)
-	ExampleKMS_Decrypt(regionString, cipherBlob)
+	cipherBlob, err := KMS_Encrypt(regionString, []byte("Somedata here"))
+	if err != nil {
+		fmt.Println(err.Error())
+		log.Fatal("Cannot encrypt Data")
+	}
+	plaintext, err := KMS_Decrypt(regionString, cipherBlob)
+	if err != nil {
+		log.Fatal("Cannot decrypt Data")
+	}
+	fmt.Println(plaintext)
 }
