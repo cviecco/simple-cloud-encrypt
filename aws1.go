@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/sha512"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -74,15 +76,61 @@ func KMS_Encrypt(regionString string, keyId string, plaintext []byte) (output []
 	return resp.CiphertextBlob, nil
 }
 
-func main() {
-	var infilename = flag.String("infilename", "in.txt", "Input filename")
-	var outfilename = flag.String("outfilename", "out.txt", "Output filename")
-	var decrypt = flag.Bool("d", false, "Decrypt (defaults to encrypt)")
-	var keyId = flag.String("keyid", "alias/testkey1", "Key to use in the form of a full arn(arnd:aws....) or alias(alias/testkey1)")
-	flag.BoolVar(&debug, "D", false, "Enable Debug output")
-	flag.Parse()
-	//infilename := "foo.txt"
-	f, err := os.Open(*infilename)
+func GenRandomKey(regionString string, KeyId string) (output []byte, err error) {
+	// Since we are paranoid, we do not want to trust the KMS completely for our randomness, nor
+	// trust the running vm for the randomness, so we do the following:
+	// get 128 bytes* of randomness from both KMS and localmachine,
+	// and for the secret the SHA512 of the concatenation of the KMS value with the localvalue
+	//
+	// *128 is the minumium value for KMS GenerateDataKeyInput.
+	const numBytesPerInput = 128
+
+	svc := kms.New(session.New(&aws.Config{Region: aws.String(regionString)}))
+	// Seems like I cannot call kms.GenerateRandomInput without some extra policies... to simply policies we will
+	// be using GenerateDataKeyInput instead
+	params := &kms.GenerateDataKeyInput{
+		KeyId: aws.String(KeyId), // Required
+		EncryptionContext: map[string]*string{
+			"Key": aws.String("EncryptionContextValue"), // Required
+			// More values...
+		},
+		GrantTokens: []*string{
+			aws.String("GrantTokenType"), // Required
+			// More values...
+		},
+		//KeySpec: aws.String(keySpec),
+		NumberOfBytes: aws.Int64(numBytesPerInput),
+	}
+	resp, err := svc.GenerateDataKey(params)
+	if err != nil {
+		return nil, err
+	}
+	if debug {
+		// Pretty-print the response data.
+		fmt.Println(resp)
+	}
+
+	// get some local randomness
+	localRand := make([]byte, numBytesPerInput)
+	_, err = rand.Read(localRand)
+	if err != nil {
+		//fmt.Println("error:", err)
+		return nil, err
+	}
+	if debug {
+		// Pretty-print localRand data.
+		fmt.Println(localRand)
+	}
+	//append and hash
+	localRand = append(localRand, resp.CiphertextBlob...)
+	newRand := sha512.Sum512(localRand)
+	output = newRand[:]
+	return output, nil
+
+}
+
+func loadBytesFromFile(filename string) (output []byte, err error) {
+	f, err := os.Open(filename)
 	if err != nil {
 		panic(err)
 	}
@@ -92,20 +140,52 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	regionString, err := getRegionString()
-	if err != nil {
-		log.Fatal("Cannot get Region string")
-	}
 	// now wat... encrypt?
 	//svc := kms.New(sess)
 	if debug {
 		fmt.Println(inText)
 	}
+	return inText, nil
+}
+
+func main() {
+	var infilename = flag.String("infilename", "in.txt", "Input filename")
+	var outfilename = flag.String("outfilename", "out.txt", "Output filename")
+	var decrypt = flag.Bool("d", false, "Decrypt (defaults to encrypt)")
+	var generate = flag.Bool("g", false, "Generate secure random data (64bytes)")
+	var keyId = flag.String("keyid", "alias/testkey1", "Key to use in the form of a full arn(arnd:aws....) or alias(alias/testkey1)")
+	flag.BoolVar(&debug, "D", false, "Enable Debug output")
+	flag.Parse()
+
+	//Sanity Checks/ select operation
+	if *decrypt && *generate {
+		log.Fatal("Cannot decrypt and Generate, choose only one")
+	}
+	regionString, err := getRegionString()
+	if err != nil {
+		log.Fatal("Cannot get Region string")
+	}
+
 	var outText []byte
-	if !*decrypt {
+
+	switch {
+	case *generate:
+		if debug {
+			fmt.Printf("Doing generation\n")
+		}
+		generatedBlob, err := GenRandomKey(regionString, *keyId)
+		if err != nil {
+			fmt.Println(err.Error())
+			log.Fatal("Cannot generate random data")
+		}
+		outText = generatedBlob
+	case !*decrypt: //encrypt
 		if debug {
 			fmt.Printf("Doing encryption\n")
+		}
+		inText, err := loadBytesFromFile(*infilename)
+		if err != nil {
+			log.Fatal(err)
 		}
 		cipherBlob, err := KMS_Encrypt(regionString, *keyId, inText)
 		if err != nil {
@@ -113,9 +193,13 @@ func main() {
 			log.Fatal("Cannot encrypt Data")
 		}
 		outText = cipherBlob
-	} else {
+	case *decrypt:
 		if debug {
 			fmt.Printf("Doing decryption\n")
+		}
+		inText, err := loadBytesFromFile(*infilename)
+		if err != nil {
+			log.Fatal(err)
 		}
 		plaintext, err := KMS_Decrypt(regionString, inText)
 		if err != nil {
@@ -124,6 +208,7 @@ func main() {
 		}
 
 		outText = plaintext
+
 	}
 	if debug {
 		fmt.Println(outText)
