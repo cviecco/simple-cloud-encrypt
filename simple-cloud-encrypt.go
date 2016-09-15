@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kms"
 )
@@ -18,7 +19,9 @@ var debug = false
 
 // Need to modify this to use the metadata service? is kms regin independent? what about roles?
 func getRegionString() (string, error) {
-	return "us-east-1", nil
+	svc := ec2metadata.New(session.New())
+	region, err := svc.Region()
+	return region, err
 }
 
 func KMS_Decrypt(regionString string, inCiphertextBlob []byte) (plaintext []byte, err error) {
@@ -164,6 +167,9 @@ func main() {
 	regionString, err := getRegionString()
 	if err != nil {
 		log.Fatal("Cannot get Region string")
+	}
+	if debug {
+		fmt.Printf("Region=%s\n", regionString)
 	}
 
 	var outText []byte
