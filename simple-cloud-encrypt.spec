@@ -1,5 +1,5 @@
 Name:           simple-cloud-encrypt
-Version:	0.9.1
+Version:	0.9.2
 Release:	1%{?dist}
 Summary:	Simple encryption using clound infrastrcture
 
@@ -19,11 +19,11 @@ Simple encryption using clound infrastrcture
 
 
 %prep
-%setup -n %{name}-%{version} 
+%setup -n %{name}-%{version}
 
 
 %build
-go build simple-cloud-encrypt.go 
+go build simple-cloud-encrypt.go
 
 
 %install

@@ -135,7 +135,7 @@ func GenRandomKey(regionString string, KeyId string) (output []byte, err error) 
 func loadBytesFromFile(filename string) (output []byte, err error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer f.Close()
 
@@ -166,7 +166,7 @@ func main() {
 	}
 	regionString, err := getRegionString()
 	if err != nil {
-		log.Fatal("Cannot get Region string")
+		log.Fatalf("Cannot get Region string %s", err)
 	}
 	if debug {
 		fmt.Printf("Region=%s\n", regionString)
